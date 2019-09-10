@@ -99,7 +99,9 @@ Task("provision")
         }
         else
         {
-            await Boots ($"https://download.mono-project.com/archive/6.0.0/macos-10-universal/MonoFramework-MDK-{monoVersion}.macos10.xamarin.universal.pkg");        
+            await Boots($"https://download.mono-project.com/archive/6.0.0/macos-10-universal/MonoFramework-MDK-{monoVersion}.macos10.xamarin.universal.pkg");      
+            await Boots($"https://bosstoragemirror.blob.core.windows.net/wrench/jenkins/d16-2/a8bceccedcc8366455ffd941b8fafce1d97f4676/39/package/xamarin.ios-12.14.0.110.pkg");
+            await Boots($"https://bosstoragemirror.blob.core.windows.net/wrench/jenkins/d16-2/a8bceccedcc8366455ffd941b8fafce1d97f4676/39/package/xamarin.mac-5.14.0.110.pkg");
         }
     });
 
