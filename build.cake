@@ -80,13 +80,26 @@ Task("provision")
         var platform = IsRunningOnWindows() ? "windows" : "macos";
         await Boots ($"https://aka.ms/xamarin-android-commercial-d16-2-{platform}");
 
+        string monoVersion = "6.0.0.319";
         if(IsRunningOnWindows())
         {
-            await Boots ($"https://download.mono-project.com/archive/6.0.0/windows-installer/mono-6.0.0.316-x64-0.msi");        
+            string monoPath = $"{System.IO.Path.GetTempPath()}/mono.msi";
+            DownloadFile(
+                $"https://download.mono-project.com/archive/6.0.0/windows-installer/mono-{monoVersion}-x64-0.msi",
+                monoPath
+            );
+
+            StartProcess("msiexec", new ProcessSettings {
+                Arguments = new ProcessArgumentBuilder()
+                    .Append(@"/i")
+                    .Append(monoPath)
+                    .Append("/qn")
+                }
+            );
         }
         else
         {
-            await Boots ($"https://download.mono-project.com/archive/6.0.0/macos-10-universal/MonoFramework-MDK-6.0.0.319.macos10.xamarin.universal.pkg");        
+            await Boots ($"https://download.mono-project.com/archive/6.0.0/macos-10-universal/MonoFramework-MDK-{monoVersion}.macos10.xamarin.universal.pkg");        
         }
     });
 
