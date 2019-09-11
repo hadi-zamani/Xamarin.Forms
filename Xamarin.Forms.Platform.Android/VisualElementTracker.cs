@@ -42,7 +42,7 @@ namespace Xamarin.Forms.Platform.Android
 
 			renderer.View.SetCameraDistance(3600);
 
-			renderer.View.AddOnAttachStateChangeListener(AttachTracker.Instance);
+			AttachTracker.AddOnAttachStateChangeListener(renderer.View);
 		}
 
 		public void Dispose()
@@ -65,7 +65,7 @@ namespace Xamarin.Forms.Platform.Android
 				if (_renderer != null)
 				{
 					_renderer.ElementChanged -= RendererOnElementChanged;
-					_renderer.View.RemoveOnAttachStateChangeListener(AttachTracker.Instance);
+					AttachTracker.RemoveOnAttachStateChangeListener(_renderer.View);
 					_renderer = null;
 					_context = null;
 				}
@@ -429,6 +429,15 @@ namespace Xamarin.Forms.Platform.Android
 		class AttachTracker : Object, AView.IOnAttachStateChangeListener
 		{
 			public static readonly AttachTracker Instance = new AttachTracker();
+
+			public static void AddOnAttachStateChangeListener(AView attachedView)
+			{
+				attachedView.AddOnAttachStateChangeListener(Instance);
+			}
+			public static void RemoveOnAttachStateChangeListener(AView attachedView)
+			{
+				attachedView.RemoveOnAttachStateChangeListener(Instance);
+			}
 
 			public void OnViewAttachedToWindow(AView attachedView)
 			{

@@ -262,6 +262,7 @@ namespace Xamarin.Forms.Platform.Android
 				_powerSaveModeBroadcastReceiver = new PowerSaveModeBroadcastReceiver();
 			}
 
+			ContextExtensions.SetDesignerContext(_layout);
 			Profile.FrameEnd();
 		}
 
@@ -425,7 +426,6 @@ namespace Xamarin.Forms.Platform.Android
 			PopupManager.ResetBusyCount(this);
 
 			Platform = new AppCompat.Platform(this);
-
 			Platform.SetPage(page);
 			_layout.AddView(Platform);
 			_layout.BringToFront();

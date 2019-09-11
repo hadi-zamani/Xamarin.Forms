@@ -121,16 +121,26 @@ namespace Xamarin.Forms.Platform.Android
 			if (_isDesignerContext.HasValue)
 				return _isDesignerContext.Value;
 
+			context.SetDesignerContext();
+			return _isDesignerContext.Value;
+		}
+
+		internal static void SetDesignerContext(this Context context)
+		{
+			if (_isDesignerContext.HasValue)
+				return;
+
 			if (context == null)
 				_isDesignerContext = false;
 			else if ($"{context}".Contains("com.android.layoutlib.bridge.android.BridgeContext"))
 				_isDesignerContext = true;
-			else if (context is ContextWrapper contextWrapper)
-				return contextWrapper.BaseContext.IsDesignerContext();
 			else
 				_isDesignerContext = false;
+		}
 
-			return _isDesignerContext.Value;
+		internal static void SetDesignerContext(global::Android.Views.View view)
+		{
+			_isDesignerContext = view.IsInEditMode;
 		}
 
 		public static AFragmentManager GetFragmentManager(this Context context)
