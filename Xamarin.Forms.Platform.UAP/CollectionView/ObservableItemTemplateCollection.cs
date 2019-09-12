@@ -10,8 +10,11 @@ namespace Xamarin.Forms.Platform.UWP
 		readonly IList _innerSource;
 		readonly DataTemplate _itemTemplate;
 		readonly BindableObject _container;
+		readonly double _itemHeight;
+		readonly double _itemWidth;
+		readonly Thickness _itemSpacing;
 
-		public ObservableItemTemplateCollection(IList itemsSource, DataTemplate itemTemplate, BindableObject container)
+		public ObservableItemTemplateCollection(IList itemsSource, DataTemplate itemTemplate, BindableObject container, double? itemHeight = null, double? itemWidth = null, Thickness? itemSpacing = null)
 		{
 			if (!(itemsSource is INotifyCollectionChanged notifyCollectionChanged))
 			{
@@ -21,9 +24,19 @@ namespace Xamarin.Forms.Platform.UWP
 			_innerSource = itemsSource;
 			_itemTemplate = itemTemplate;
 			_container = container;
+
+			if (itemHeight.HasValue)
+				_itemHeight = itemHeight.Value;
+
+			if (itemWidth.HasValue)
+				_itemWidth = itemWidth.Value;
+
+			if (itemSpacing.HasValue)
+				_itemSpacing = itemSpacing.Value;
+
 			for (int n = 0; n < itemsSource.Count; n++)
 			{
-				Add(new ItemTemplateContext (itemTemplate, itemsSource[n], container));
+				Add(new ItemTemplateContext(itemTemplate, itemsSource[n], container, _itemHeight, _itemWidth, _itemSpacing));
 			}
 
 			notifyCollectionChanged.CollectionChanged += InnerCollectionChanged;
@@ -59,7 +72,7 @@ namespace Xamarin.Forms.Platform.UWP
 
 			for (int n = args.NewItems.Count - 1; n >= 0; n--)
 			{
-				Insert(startIndex, new ItemTemplateContext(_itemTemplate, args.NewItems[n], _container));
+				Insert(startIndex, new ItemTemplateContext(_itemTemplate, args.NewItems[n], _container, _itemHeight, _itemWidth, _itemSpacing));
 			}
 		}
 

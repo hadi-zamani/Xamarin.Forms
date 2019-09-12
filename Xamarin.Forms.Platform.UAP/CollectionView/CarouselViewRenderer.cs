@@ -1,13 +1,22 @@
 ﻿using System.ComponentModel;
+using System.Threading.Tasks;
 using Windows.UI.Xaml.Controls;
+using Windows.UI.Xaml.Data;
 using UWPApp = Windows.UI.Xaml.Application;
 using UWPDataTemplate = Windows.UI.Xaml.DataTemplate;
+using WScrollBarVisibility = Windows.UI.Xaml.Controls.ScrollBarVisibility;
+using WSnapPointsType = Windows.UI.Xaml.Controls.SnapPointsType;
+using WSnapPointsAlignment = Windows.UI.Xaml.Controls.Primitives.SnapPointsAlignment;
 
 namespace Xamarin.Forms.Platform.UWP
 {
 	public class CarouselViewRenderer : ItemsViewRenderer
 	{
+		CollectionViewSource _collectionViewSource;
 		IItemsLayout _layout;
+		ScrollViewer _scrollViewer;
+		double _carouselHeight;
+		double _carouselWidth;
 
 		public CarouselViewRenderer()
 		{
@@ -21,7 +30,9 @@ namespace Xamarin.Forms.Platform.UWP
 		{
 			base.OnElementPropertyChanged(sender, changedProperty);
 
-			if (changedProperty.Is(ItemsView.ItemsSourceProperty))
+			if (changedProperty.Is(ItemsView.ItemsSourceProperty) ||
+				changedProperty.Is(CarouselView.NumberOfSideItemsProperty) ||
+				changedProperty.Is(ListItemsLayout.ItemSpacingProperty))
 				UpdateItemsSource();
 			else if (changedProperty.Is(ItemsView.ItemTemplateProperty))
 				UpdateItemTemplate();
@@ -33,26 +44,73 @@ namespace Xamarin.Forms.Platform.UWP
 				UpdateIsBounceEnabled();
 		}
 
-		protected override void SetUpNewElement(ItemsView newElement)
+		void OnLayoutPropertyChanged(object sender, PropertyChangedEventArgs propertyChanged)
 		{
-			base.SetUpNewElement(newElement);
+			if (propertyChanged.IsOneOf(ListItemsLayout.ItemSpacingProperty, GridItemsLayout.HorizontalItemSpacingProperty, GridItemsLayout.VerticalItemSpacingProperty))
+				UpdateItemSpacing();
+			else if (propertyChanged.Is(ItemsLayout.SnapPointsTypeProperty))
+				UpdateSnapPointsType();
+			else if (propertyChanged.Is(ItemsLayout.SnapPointsAlignmentProperty))
+				UpdateSnapPointsAlignment();
+		}
 
-			_layout = newElement.ItemsLayout;
+		protected override void SetUpNewElement(ItemsView newElement, bool setUpProperties)
+		{
+			base.SetUpNewElement(newElement, false);
 
-			UpdateItemsSource();
-			UpdateItemTemplate();
-			UpdatePeekAreaInsets();
-			UpdateIsSwipeEnabled();
-			UpdateIsBounceEnabled();
+			if (newElement != null)
+			{
+				ListViewBase.SizeChanged += OnListSizeChanged;
+
+				_layout = newElement.ItemsLayout;
+				_layout.PropertyChanged += OnLayoutPropertyChanged;
+			}
 		}
 
 		protected override void TearDownOldElement(ItemsView oldElement)
 		{
+			base.TearDownOldElement(oldElement);
+
 			if (oldElement == null)
 				return;
 
+			if (ListViewBase != null)
+			{
+				ListViewBase.SizeChanged -= OnListSizeChanged;
+			}
+
 			if (_layout != null)
+			{
+				_layout.PropertyChanged -= OnLayoutPropertyChanged;
 				_layout = null;
+			}
+
+			if (_scrollViewer != null)
+			{
+				_scrollViewer.ViewChanging -= OnScrollViewChanging;
+				_scrollViewer.ViewChanged -= OnScrollViewChanged;
+			}
+		}
+
+		protected override void UpdateItemsSource()
+		{
+			var itemsSource = Element.ItemsSource;
+
+			if (itemsSource == null)
+				return;
+
+			var itemTemplate = Element.ItemTemplate;
+
+			if (itemTemplate == null)
+				return;
+
+			_collectionViewSource = new CollectionViewSource
+			{
+				Source = TemplatedItemSourceFactory.Create(itemsSource, itemTemplate, Element, GetItemHeight(), GetItemWidth(), GetItemSpacing()),
+				IsSourceGrouped = false
+			};
+
+			ListViewBase.ItemsSource = _collectionViewSource.View;
 		}
 
 		protected override ListViewBase SelectLayout(IItemsLayout layoutSpecification)
@@ -74,13 +132,54 @@ namespace Xamarin.Forms.Platform.UWP
 			}
 
 			ListViewBase.ItemTemplate = CarouselItemsViewTemplate;
+		}
 
-			base.UpdateItemTemplate();
+		protected override Task ScrollTo(ScrollToRequestEventArgs args)
+		{
+			var targetItem = FindCarouselItem(args);
+
+			// TODO: jsuarezruiz Include support to animated scroll.
+			ListViewBase.ScrollIntoView(targetItem);
+
+			return Task.FromResult<object>(null);
+		}
+
+		void OnListSizeChanged(object sender, Windows.UI.Xaml.SizeChangedEventArgs e)
+		{
+			var newSize = e.NewSize;
+
+			_carouselHeight = newSize.Height;
+			_carouselWidth = newSize.Width;
+
+			_scrollViewer = ListViewBase.GetFirstDescendant<ScrollViewer>();
+
+			if (_scrollViewer != null)
+			{
+				// TODO: jsuarezruiz This breaks the ScrollTo override. Review it.
+				_scrollViewer.ViewChanging += OnScrollViewChanging;
+				_scrollViewer.ViewChanged += OnScrollViewChanged;
+			}
+
+			UpdateItemsSource();
+			UpdateItemTemplate();
+			UpdatePeekAreaInsets();
+			UpdateIsSwipeEnabled();
+			UpdateIsBounceEnabled();
+		}
+
+		void OnScrollViewChanging(object sender, ScrollViewerViewChangingEventArgs e)
+		{
+			CarouselView.SetIsDragging(true);
+		}
+
+		void OnScrollViewChanged(object sender, ScrollViewerViewChangedEventArgs e)
+		{
+			CarouselView.SetIsDragging(e.IsIntermediate);
 		}
 
 		void UpdatePeekAreaInsets()
 		{
-			UpdateItemTemplate();
+			UpdateItemsSource();
 		}
 
 		void UpdateIsSwipeEnabled()
@@ -94,21 +193,64 @@ namespace Xamarin.Forms.Platform.UWP
 			{
 				case ListItemsLayout listItemsLayout when listItemsLayout.Orientation == ItemsLayoutOrientation.Horizontal:
 					ScrollViewer.SetHorizontalScrollMode(ListViewBase, CarouselView.IsSwipeEnabled ? ScrollMode.Auto : ScrollMode.Disabled);
-					ScrollViewer.SetHorizontalScrollBarVisibility(ListViewBase, CarouselView.IsSwipeEnabled ? Windows.UI.Xaml.Controls.ScrollBarVisibility.Auto : Windows.UI.Xaml.Controls.ScrollBarVisibility.Disabled);
+					ScrollViewer.SetHorizontalScrollBarVisibility(ListViewBase, CarouselView.IsSwipeEnabled ? WScrollBarVisibility.Auto : WScrollBarVisibility.Disabled);
 					break;
 				case ListItemsLayout listItemsLayout when listItemsLayout.Orientation == ItemsLayoutOrientation.Vertical:
 					ScrollViewer.SetVerticalScrollMode(ListViewBase, CarouselView.IsSwipeEnabled ? ScrollMode.Auto : ScrollMode.Disabled);
-					ScrollViewer.SetVerticalScrollBarVisibility(ListViewBase, CarouselView.IsSwipeEnabled ? Windows.UI.Xaml.Controls.ScrollBarVisibility.Auto : Windows.UI.Xaml.Controls.ScrollBarVisibility.Disabled);
+					ScrollViewer.SetVerticalScrollBarVisibility(ListViewBase, CarouselView.IsSwipeEnabled ? WScrollBarVisibility.Auto : WScrollBarVisibility.Disabled);
 					break;
 			}
 		}
 
 		void UpdateIsBounceEnabled()
 		{
-			var scrollViewer = ListViewBase.GetFirstDescendant<ScrollViewer>();
+			if (_scrollViewer != null)
+				_scrollViewer.IsScrollInertiaEnabled = CarouselView.IsBounceEnabled;
+		}
 
-			if (scrollViewer != null)
-				scrollViewer.IsScrollInertiaEnabled = CarouselView.IsBounceEnabled;
+		void UpdateItemSpacing()
+		{
+			UpdateItemsSource();
+
+			if (_layout is ListItemsLayout listItemsLayout)
+			{
+				var itemSpacing = listItemsLayout.ItemSpacing;
+				if (listItemsLayout.Orientation == ItemsLayoutOrientation.Horizontal)
+					_scrollViewer.Padding = new Windows.UI.Xaml.Thickness(0, 0, itemSpacing, 0);
+
+				if (listItemsLayout.Orientation == ItemsLayoutOrientation.Vertical)
+					_scrollViewer.Padding = new Windows.UI.Xaml.Thickness(0, 0, 0, itemSpacing);
+			}
+		}
+
+		void UpdateSnapPointsType()
+		{
+			if (_scrollViewer != null)
+			{
+				if (_layout != null && _layout is ListItemsLayout listItemsLayout)
+				{
+					if (listItemsLayout.Orientation == ItemsLayoutOrientation.Horizontal)
+						_scrollViewer.HorizontalSnapPointsType = GetWindowsSnapPointsType(listItemsLayout.SnapPointsType);
+
+					if (listItemsLayout.Orientation == ItemsLayoutOrientation.Vertical)
+						_scrollViewer.VerticalSnapPointsType = GetWindowsSnapPointsType(listItemsLayout.SnapPointsType);
+				}
+			}
+		}
+
+		void UpdateSnapPointsAlignment()
+		{
+			if (_scrollViewer != null)
+			{
+				if (_layout != null && _layout is ListItemsLayout listItemsLayout)
+				{
+					if (listItemsLayout.Orientation == ItemsLayoutOrientation.Horizontal)
+						_scrollViewer.HorizontalSnapPointsAlignment = GetWindowsSnapPointsAlignment(listItemsLayout.SnapPointsAlignment);
+
+					if (listItemsLayout.Orientation == ItemsLayoutOrientation.Vertical)
+						_scrollViewer.VerticalSnapPointsAlignment = GetWindowsSnapPointsAlignment(listItemsLayout.SnapPointsAlignment);
+				}
+			}
 		}
 
 		ListViewBase CreateCarouselListLayout(ItemsLayoutOrientation layoutOrientation)
@@ -132,6 +274,104 @@ namespace Xamarin.Forms.Platform.UWP
 			}
 
 			return listView;
+		}
+
+		double GetItemWidth()
+		{
+			var itemWidth = _carouselWidth;
+
+			if (_layout is ListItemsLayout listItemsLayout && listItemsLayout.Orientation == ItemsLayoutOrientation.Horizontal)
+			{
+				var numberOfVisibleItems = CarouselView.NumberOfSideItems * 2 + 1;
+				itemWidth = (_carouselWidth - CarouselView.PeekAreaInsets.Left - CarouselView.PeekAreaInsets.Right - listItemsLayout.ItemSpacing) / numberOfVisibleItems;
+			}
+
+			return itemWidth;
+		}
+
+		double GetItemHeight()
+		{
+			var itemHeight = _carouselHeight;
+
+			if (_layout is ListItemsLayout listItemsLayout && listItemsLayout.Orientation == ItemsLayoutOrientation.Vertical)
+			{
+				var numberOfVisibleItems = CarouselView.NumberOfSideItems * 2 + 1;
+				itemHeight = (_carouselHeight - CarouselView.PeekAreaInsets.Top - CarouselView.PeekAreaInsets.Bottom - listItemsLayout.ItemSpacing) / numberOfVisibleItems;
+			}
+
+			return itemHeight;
+		}
+
+		Thickness GetItemSpacing()
+		{
+			if (_layout != null && _layout is ListItemsLayout listItemsLayout)
+			{
+				var itemSpacing = listItemsLayout.ItemSpacing;
+
+				if (listItemsLayout.Orientation == ItemsLayoutOrientation.Horizontal)
+					return new Thickness(itemSpacing, 0, 0, 0);
+
+				if (listItemsLayout.Orientation == ItemsLayoutOrientation.Vertical)
+					return new Thickness(0, itemSpacing, 0, 0);
+			}
+
+			return new Thickness(0);
+		}
+
+		object FindCarouselItem(ScrollToRequestEventArgs args)
+		{
+			if (args.Mode == ScrollToMode.Position)
+			{
+				return _collectionViewSource.View[args.Index];
+			}
+
+			if (Element.ItemTemplate == null)
+			{
+				return args.Item;
+			}
+
+			for (int n = 0; n < _collectionViewSource?.View.Count; n++)
+			{
+				if (_collectionViewSource.View[n] is ItemTemplateContext pair)
+				{
+					if (pair.Item == args.Item)
+					{
+						return _collectionViewSource.View[n];
+					}
+				}
+			}
+
+			return null;
+		}
+
+		WSnapPointsType GetWindowsSnapPointsType(SnapPointsType snapPointsType)
+		{
+			switch (snapPointsType)
+			{
+				case SnapPointsType.Mandatory:
+					return WSnapPointsType.Mandatory;
+				case SnapPointsType.MandatorySingle:
+					return WSnapPointsType.MandatorySingle;
+				case SnapPointsType.None:
+					return WSnapPointsType.None;
+			}
+
+			return WSnapPointsType.None;
+		}
+
+		WSnapPointsAlignment GetWindowsSnapPointsAlignment(SnapPointsAlignment snapPointsAlignment)
+		{
+			switch (snapPointsAlignment)
+			{
+				case SnapPointsAlignment.Center:
+					return WSnapPointsAlignment.Center;
+				case SnapPointsAlignment.End:
+					return WSnapPointsAlignment.Far;
+				case SnapPointsAlignment.Start:
+					return WSnapPointsAlignment.Near;
+			}
+
+			return WSnapPointsAlignment.Center;
 		}
 	}
 }

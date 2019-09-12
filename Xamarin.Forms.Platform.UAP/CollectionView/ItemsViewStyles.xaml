@@ -42,7 +42,10 @@
             x:Name="ItemContentControl" 
 			FormsDataTemplate="{Binding FormsDataTemplate}" 
             FormsDataContext="{Binding Item}"
-            FormsContainer="{Binding Container}">
+            FormsContainer="{Binding Container}"
+            ItemHeight="{Binding ItemHeight}"
+            ItemWidth="{Binding ItemWidth}"
+            ItemSpacing="{Binding ItemSpacing}">
         </local:ItemContentControl>
     </DataTemplate>
     
@@ -76,7 +79,10 @@
         <Setter Property="ItemContainerStyle">
             <Setter.Value>
                 <Style TargetType="ListViewItem">
+                    <Setter Property="HorizontalAlignment" Value="Stretch" />
                     <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                    <Setter Property="VerticalContentAlignment" Value="Stretch" />
+                    <Setter Property="VerticalAlignment" Value="Stretch" />
                 </Style>
             </Setter.Value>
         </Setter>
@@ -160,7 +166,10 @@
         <Setter Property="ItemContainerStyle">
             <Setter.Value>
                 <Style TargetType="ListViewItem">
+                    <Setter Property="HorizontalAlignment" Value="Stretch" />
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                     <Setter Property="VerticalContentAlignment" Value="Stretch" />
+                    <Setter Property="VerticalAlignment" Value="Stretch" />
                 </Style>
             </Setter.Value>
         </Setter>

@@ -131,6 +131,7 @@
     <Compile Include="_58406EffectRenderer.cs" />
     <Compile Include="_5886DependencyService.cs" />
     <Compile Include="_60122ImageRenderer.cs" />
+    <Content Include="Assets\cardBackground.png" />
     <Content Include="Assets\Fonts\OFL.txt" />
     <Content Include="bank.png" />
     <Content Include="calculator.png" />

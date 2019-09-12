@@ -39,7 +39,7 @@ namespace Xamarin.Forms.Controls.GalleryPages.CollectionViewGalleries.CarouselVi
 				switch (_type)
 				{
 					case CarouselXamlSampleType.Peek:
-						items.Add(new CarouselItem(i, "cardBackground"));
+						items.Add(new CarouselItem(i, Device.RuntimePlatform != Device.UWP ? "cardBackground" : "Assets/cardBackground.png"));
 						break;
 					default:
 						items.Add(new CarouselItem(i));
