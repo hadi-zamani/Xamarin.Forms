@@ -14,6 +14,7 @@ using Xamarin.Forms.Platform.UAP;
 using UwpScrollBarVisibility = Windows.UI.Xaml.Controls.ScrollBarVisibility;
 using UWPApp = Windows.UI.Xaml.Application;
 using UWPDataTemplate = Windows.UI.Xaml.DataTemplate;
+using UWPPoint = Windows.Foundation.Point;
 
 namespace Xamarin.Forms.Platform.UWP
 {
@@ -31,6 +32,8 @@ namespace Xamarin.Forms.Platform.UWP
 
 		View _currentHeader;
 		View _currentFooter;
+
+		static UWPPoint Zero = new Windows.Foundation.Point(0, 0);
 
 		protected ItemsControl ItemsControl { get; private set; }
 
@@ -53,7 +56,7 @@ namespace Xamarin.Forms.Platform.UWP
 			{
 				UpdateItemTemplate();
 			}
-			else if(changedProperty.Is(ItemsView.HorizontalScrollBarVisibilityProperty))
+			else if (changedProperty.Is(ItemsView.HorizontalScrollBarVisibilityProperty))
 			{
 				UpdateHorizontalScrollBarVisibility();
 			}
@@ -129,7 +132,7 @@ namespace Xamarin.Forms.Platform.UWP
 					IsSourceGrouped = false
 				};
 			}
-			
+
 			ListViewBase.ItemsSource = _collectionViewSource.View;
 		}
 
@@ -217,9 +220,11 @@ namespace Xamarin.Forms.Platform.UWP
 
 				case string text:
 					ListViewBase.FooterTemplate = null;
-					ListViewBase.Footer = new TextBlock { Text = text };
+					ListViewBase.Footer = new TextBlock
+					{
+						Text = text
+					};
 					break;
-
 				case View view:
 					ListViewBase.FooterTemplate = ViewTemplate;
 					_currentFooter = view;
@@ -242,6 +247,7 @@ namespace Xamarin.Forms.Platform.UWP
 					break;
 			}
 		}
+
 
 		static ListViewBase CreateGridView(GridItemsLayout gridItemsLayout)
 		{
@@ -341,21 +347,40 @@ namespace Xamarin.Forms.Platform.UWP
 			oldElement.ScrollToRequested -= ScrollToRequested;
 		}
 
+		protected virtual async Task ScrollTo(ScrollToRequestEventArgs args)
+		{
+			if (!(Control is ListViewBase list))
+			{
+				return;
+			}
+
+			var (position, item) = FindBoundItem(args);
+
+			if (args.IsAnimated)
+			{
+				await AnimateTo(list, position, item, args.ScrollToPosition);
+			}
+			else
+			{
+				await JumpToItemAsync(list, item, args.ScrollToPosition);
+			}
+		}
+
 		async void ScrollToRequested(object sender, ScrollToRequestEventArgs args)
 		{
 			await ScrollTo(args);
 		}
 
-		object FindBoundItem(ScrollToRequestEventArgs args)
+		(int, object) FindBoundItem(ScrollToRequestEventArgs args)
 		{
 			if (args.Mode == ScrollToMode.Position)
 			{
-				return _collectionViewSource.View[args.Index];
+				return (args.Index, _collectionViewSource.View[args.Index]);
 			}
 
 			if (Element.ItemTemplate == null)
 			{
-				return args.Item;
+				return (-1, args.Item);
 			}
 
 			for (int n = 0; n < _collectionViewSource.View.Count; n++)
@@ -364,18 +389,25 @@ namespace Xamarin.Forms.Platform.UWP
 				{
 					if (pair.Item == args.Item)
 					{
-						return _collectionViewSource.View[n];
+						return (n, _collectionViewSource.View[n]);
 					}
 				}
 			}
 
-			return null;
+			return (-1, null);
 		}
 
-		async Task JumpTo(ListViewBase list, object targetItem, ScrollToPosition scrollToPosition)
+		async Task JumpToItemAsync(ListViewBase list, object targetItem, ScrollToPosition scrollToPosition)
 		{
 			var tcs = new TaskCompletionSource<object>();
-			void ViewChanged(object s, ScrollViewerViewChangedEventArgs e) => tcs.TrySetResult(null);
+			void ViewChanged(object s, ScrollViewerViewChangedEventArgs e)
+			{
+				if (!e.IsIntermediate)
+				{
+					tcs.TrySetResult(null);
+				}
+			}
+
 			var scrollViewer = list.GetFirstDescendant<ScrollViewer>();
 
 			try
@@ -401,18 +433,21 @@ namespace Xamarin.Forms.Platform.UWP
 			{
 				scrollViewer.ViewChanged -= ViewChanged;
 			}
-
 		}
 
-		async Task ChangeViewAsync(ScrollViewer scrollViewer, double? horizontalOffset, double? verticalOffset, bool disableAnimation)
+		async Task JumpToOffsetAsync(ScrollViewer scrollViewer, double targetHorizontalOffset, double targetVerticalOffset)
 		{
 			var tcs = new TaskCompletionSource<object>();
-			void ViewChanged(object s, ScrollViewerViewChangedEventArgs e) => tcs.TrySetResult(null);
+
+			void ViewChanged(object s, ScrollViewerViewChangedEventArgs e)
+			{
+				tcs.TrySetResult(null);
+			}
 
 			try
 			{
 				scrollViewer.ViewChanged += ViewChanged;
-				scrollViewer.ChangeView(horizontalOffset, verticalOffset, null, disableAnimation);
+				scrollViewer.ChangeView(targetHorizontalOffset, targetVerticalOffset, null, true);
 				await tcs.Task;
 			}
 			finally
@@ -421,55 +456,106 @@ namespace Xamarin.Forms.Platform.UWP
 			}
 		}
 
-		async Task AnimateTo(ListViewBase list, object targetItem, ScrollToPosition scrollToPosition)
+		async Task<bool> AnimateToOffsetAsync(ScrollViewer scrollViewer, double targetHorizontalOffset, double targetVerticalOffset, Func<Task<bool>> interruptCheck = null)
 		{
-			var scrollViewer = list.GetFirstDescendant<ScrollViewer>();
+			var tcs = new TaskCompletionSource<bool>();
 
-			var targetContainer = list.ContainerFromItem(targetItem) as UIElement;
-
-			if (targetContainer == null)
+			async void ViewChanged(object s, ScrollViewerViewChangedEventArgs e)
 			{
-				var horizontalOffset = scrollViewer.HorizontalOffset;
-				var verticalOffset = scrollViewer.VerticalOffset;
+				if (tcs.Task.IsCompleted)
+				{
+					return;
+				}
 
-				await JumpTo(list, targetItem, scrollToPosition);
-				targetContainer = list.ContainerFromItem(targetItem) as UIElement;
-				await ChangeViewAsync(scrollViewer, horizontalOffset, verticalOffset, true);
+				if (e.IsIntermediate)
+				{
+					if (interruptCheck != null && await interruptCheck())
+					{
+						scrollViewer.ChangeView(scrollViewer.HorizontalOffset, scrollViewer.VerticalOffset, 1.0f, true);
+						tcs.TrySetResult(true);
+					}
+				}
+				else
+				{
+					if (scrollViewer.HorizontalOffset != targetHorizontalOffset
+						|| scrollViewer.VerticalOffset != targetVerticalOffset)
+					{
+						tcs.TrySetResult(false);
+					}
+					else
+					{
+						tcs.TrySetResult(true);
+					}
+				}
 			}
 
-			if (targetContainer == null)
+			try
 			{
-				// Did not find the target item anywhere
-				return;
+				scrollViewer.ViewChanged += ViewChanged;
+				scrollViewer.ChangeView(targetHorizontalOffset, targetVerticalOffset, null, false);
+				return await tcs.Task;
 			}
+			finally
+			{
+				scrollViewer.ViewChanged -= ViewChanged;
+			}
+		}
 
-			// TODO hartez 2018/10/04 16:37:35 Okay, this sort of works for vertical lists but fails totally on horizontal lists. 
+		async Task ScrollToTargetContainer(UIElement targetContainer, ScrollViewer scrollViewer)
+		{
 			var transform = targetContainer.TransformToVisual(scrollViewer.Content as UIElement);
-			var position = transform?.TransformPoint(new Windows.Foundation.Point(0, 0));
+
+			var position = transform?.TransformPoint(Zero);
 
 			if (!position.HasValue)
 			{
 				return;
 			}
 
-			// TODO hartez 2018/10/05 17:23:23 The animated scroll works fine vertically if we are scrolling to a greater Y offset.	
-			// If we're scrolling back up to a lower Y offset, it just gives up and sends us to 0 (first item)
-			// Works fine if we disable animation, but that's not very helpful
+			await AnimateToOffsetAsync(scrollViewer, position.Value.X, position.Value.Y);
+		}
 
-			scrollViewer.ChangeView(position.Value.X, position.Value.Y, null, false);
+		async Task<bool> ScrollToItem(ListViewBase list, object targetItem, ScrollViewer scrollViewer)
+		{
+			var targetContainer = list.ContainerFromItem(targetItem) as UIElement;
 
-			//if (scrollToPosition == ScrollToPosition.End)
-			//{
-			//	// Modify position
-			//}
-			//else if (scrollToPosition == ScrollToPosition.Center)
-			//{
-			//	// Modify position
-			//}
-			//else
-			//{
+			if (targetContainer != null)
+			{
+				await ScrollToTargetContainer(targetContainer, scrollViewer);
+				return true;
+			}
 
-			//}
+			return false;
+		}
+
+		async Task<UWPPoint> GetApproximateTarget(ListViewBase list, object targetItem, ScrollToPosition scrollToPosition)
+		{
+			var scrollViewer = list.GetFirstDescendant<ScrollViewer>();
+
+			var horizontalOffset = scrollViewer.HorizontalOffset;
+			var verticalOffset = scrollViewer.VerticalOffset;
+
+			await JumpToItemAsync(list, targetItem, scrollToPosition);
+			var targetContainer = list.ContainerFromItem(targetItem) as UIElement;
+			var transform = targetContainer.TransformToVisual(scrollViewer.Content as UIElement);
+			await JumpToOffsetAsync(scrollViewer, horizontalOffset, verticalOffset);
+
+			return transform.TransformPoint(Zero);
+		}
+
+		async Task AnimateTo(ListViewBase list, int index, object targetItem, ScrollToPosition scrollToPosition)
+		{
+			var scrollViewer = list.GetFirstDescendant<ScrollViewer>();
+
+			if (await ScrollToItem(list, targetItem, scrollViewer))
+			{
+				// Happy path; the item was already realized and we could just scroll to it
+				return;
+			}
+
+			var targetPoint = await GetApproximateTarget(list, targetItem, scrollToPosition);
+
+			var exact = await AnimateToOffsetAsync(scrollViewer, targetPoint.X, targetPoint.Y, async () => await ScrollToItem(list, targetItem, scrollViewer));
 		}
 
 		void UpdateVerticalScrollBarVisibility()
@@ -507,25 +593,6 @@ namespace Xamarin.Forms.Platform.UWP
 				case (ScrollBarVisibility.Default):
 					ScrollViewer.SetHorizontalScrollBarVisibility(Control, _defaultHorizontalScrollVisibility.Value);
 					break;
-			}
-		}
-
-		protected virtual async Task ScrollTo(ScrollToRequestEventArgs args)
-		{
-			if (!(Control is ListViewBase list))
-			{
-				return;
-			}
-
-			var targetItem = FindBoundItem(args);
-
-			if (args.IsAnimated)
-			{
-				await AnimateTo(list, targetItem, args.ScrollToPosition);
-			}
-			else
-			{
-				await JumpTo(list, targetItem, args.ScrollToPosition);
 			}
 		}
 	}
