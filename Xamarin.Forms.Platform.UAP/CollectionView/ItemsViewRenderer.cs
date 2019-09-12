@@ -148,7 +148,7 @@ namespace Xamarin.Forms.Platform.UWP
 			UpdateEmptyViewVisibility();
 		}
 
-		private void ItemsChanged(object sender, NotifyCollectionChangedEventArgs e)
+		void ItemsChanged(object sender, NotifyCollectionChangedEventArgs e)
 		{
 			UpdateEmptyViewVisibility();
 		}
