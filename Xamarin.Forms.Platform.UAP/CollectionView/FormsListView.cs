@@ -15,7 +15,7 @@ namespace Xamarin.Forms.Platform.UWP
 		}
 
 		public static readonly DependencyProperty EmptyViewVisibilityProperty =
-			DependencyProperty.Register(nameof(EmptyViewVisibility), typeof(Visibility), typeof(FormsGridView), new PropertyMetadata(Visibility.Collapsed));
+			DependencyProperty.Register(nameof(EmptyViewVisibility), typeof(Visibility), typeof(FormsListView), new PropertyMetadata(Visibility.Collapsed));
 
 		public void SetEmptyView(FrameworkElement emptyView)
 		{
