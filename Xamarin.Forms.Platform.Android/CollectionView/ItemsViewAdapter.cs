@@ -56,6 +56,7 @@ namespace Xamarin.Forms.Platform.Android
 			else if (property.Is(Xamarin.Forms.ItemsView.HeaderProperty))
 			{
 				UpdateHasHeader();
+				NotifyDataSetChanged();				
 			}
 			else if (property.Is(Xamarin.Forms.ItemsView.ItemTemplateProperty))
 			{
@@ -64,6 +65,7 @@ namespace Xamarin.Forms.Platform.Android
 			else if (property.Is(Xamarin.Forms.ItemsView.FooterProperty))
 			{
 				UpdateHasFooter();
+				NotifyDataSetChanged();
 			}
 		}
 

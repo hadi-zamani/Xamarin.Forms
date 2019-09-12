@@ -130,6 +130,12 @@ namespace Xamarin.Forms.Platform.iOS
 			newElement.ScrollToRequested += ScrollToRequested;
 		}
 
+		public override void LayoutSubviews()
+		{
+			base.LayoutSubviews();
+			ItemsViewController.UpdateLayoutMeasurements();
+		}
+
 		protected virtual void UpdateLayout()
 		{
 			_layout = SelectLayout(Element.ItemsLayout, Element.ItemSizingStrategy);
