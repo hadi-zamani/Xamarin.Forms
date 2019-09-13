@@ -14,7 +14,7 @@ namespace Xamarin.Forms.Controls.Issues
 #endif
 	[Preserve(AllMembers = true)]
 	[Issue(IssueTracker.Github, 6384, "content page in tabbed page not showing inside shell tab", PlatformAffected.Default)]
-	public class Github6384 : TestShell // or TestMasterDetailPage, etc ...
+	public class Github6384 : TestShell
 	{
 		protected override void Init()
 		{
@@ -45,13 +45,30 @@ namespace Xamarin.Forms.Controls.Issues
 
 		private void TabOneButton_Clicked(object sender, System.EventArgs e)
 		{
-			var subTabPageOne = new ContentPage { Content = new Label { Text = "See me?" } };
-			var subTabPageTwo = new ContentPage { Content = new Label { Text = "See me?" } };
+			var subTabPageOne = new ContentPage
+			{
+				Content = new Label
+				{
+					Text = "See me?",
+					VerticalTextAlignment = TextAlignment.Center,
+				},
+				BackgroundColor = Color.Blue
+			};
+			var subTabPageTwo = new ContentPage
+			{
+				Content = new Label
+				{
+					Text = "See me?",
+					VerticalTextAlignment = TextAlignment.Center,
+				},
+				BackgroundColor = Color.Green
+			};
 
 			var tabbedPage = new TabbedPage { Title = "TabbedPage" };
 			tabbedPage.Children.Add(subTabPageOne);
 			tabbedPage.Children.Add(subTabPageTwo);
-
+			tabbedPage.BackgroundColor = Color.Red;
+			Shell.SetTabBarIsVisible(tabbedPage, false);
 			this.Navigation.PushAsync(tabbedPage);
 
 		}
