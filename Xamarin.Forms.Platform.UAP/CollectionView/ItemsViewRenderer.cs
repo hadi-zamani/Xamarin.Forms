@@ -1,15 +1,11 @@
-﻿using System;
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using System.Threading.Tasks;
-using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Data;
 using Xamarin.Forms.Platform.UAP;
 using UwpScrollBarVisibility = Windows.UI.Xaml.Controls.ScrollBarVisibility;
 using UWPApp = Windows.UI.Xaml.Application;
 using UWPDataTemplate = Windows.UI.Xaml.DataTemplate;
-using UWPPoint = Windows.Foundation.Point;
-using UWPSize = Windows.Foundation.Size;
 
 namespace Xamarin.Forms.Platform.UWP
 {
@@ -27,10 +23,6 @@ namespace Xamarin.Forms.Platform.UWP
 
 		View _currentHeader;
 		View _currentFooter;
-
-		ItemsLayoutOrientation Orientation => (_layout as ListItemsLayout)?.Orientation ?? ItemsLayoutOrientation.Vertical;
-
-		static UWPPoint Zero = new UWPPoint(0, 0);
 
 		protected ItemsControl ItemsControl { get; private set; }
 
@@ -348,15 +340,15 @@ namespace Xamarin.Forms.Platform.UWP
 				return;
 			}
 
-			var (position, item) = FindBoundItem(args);
+			var item = FindBoundItem(args);
 
 			if (args.IsAnimated)
 			{
-				await AnimateTo(list, item, args.ScrollToPosition);
+				await ScrollHelpers.AnimateToItemAsync(list, item, args.ScrollToPosition);
 			}
 			else
 			{
-				await JumpToItemAsync(list, item, args.ScrollToPosition);
+				await ScrollHelpers.JumpToItemAsync(list, item, args.ScrollToPosition);
 			}
 		}
 
@@ -365,16 +357,16 @@ namespace Xamarin.Forms.Platform.UWP
 			await ScrollTo(args);
 		}
 
-		(int, object) FindBoundItem(ScrollToRequestEventArgs args)
+		object FindBoundItem(ScrollToRequestEventArgs args)
 		{
 			if (args.Mode == ScrollToMode.Position)
 			{
-				return (args.Index, _collectionViewSource.View[args.Index]);
+				return _collectionViewSource.View[args.Index];
 			}
 
 			if (Element.ItemTemplate == null)
 			{
-				return (-1, args.Item);
+				return args.Item;
 			}
 
 			for (int n = 0; n < _collectionViewSource.View.Count; n++)
@@ -383,294 +375,12 @@ namespace Xamarin.Forms.Platform.UWP
 				{
 					if (pair.Item == args.Item)
 					{
-						return (n, _collectionViewSource.View[n]);
+						return _collectionViewSource.View[n];
 					}
 				}
 			}
 
-			return (-1, null);
-		}
-
-		async Task JumpToItemAsync(ListViewBase list, object targetItem, ScrollToPosition scrollToPosition)
-		{
-			var scrollViewer = list.GetFirstDescendant<ScrollViewer>();
-
-			var tcs = new TaskCompletionSource<object>();
-			Func<Task> adjust = null;
-
-			async void ViewChanged(object s, ScrollViewerViewChangedEventArgs e)
-			{
-				if (e.IsIntermediate)
-				{
-					return;
-				}
-
-				scrollViewer.ViewChanged -= ViewChanged;
-
-				if (adjust != null)
-				{
-					await adjust();
-				}
-
-				tcs.TrySetResult(null);
-			}
-
-			try
-			{
-				scrollViewer.ViewChanged += ViewChanged;
-
-				if (scrollToPosition == ScrollToPosition.Start)
-				{
-					list.ScrollIntoView(targetItem, ScrollIntoViewAlignment.Leading);
-				}
-				else if (scrollToPosition == ScrollToPosition.MakeVisible)
-				{
-					list.ScrollIntoView(targetItem, ScrollIntoViewAlignment.Default);
-				}
-				else if (scrollToPosition == ScrollToPosition.End)
-				{
-					list.ScrollIntoView(targetItem, ScrollIntoViewAlignment.Leading);
-
-					adjust = async () =>
-					{
-						var point = new UWPPoint(scrollViewer.HorizontalOffset, scrollViewer.VerticalOffset);
-						var targetContainer = list.ContainerFromItem(targetItem) as UIElement;
-						point = AdjustToEnd(point, targetContainer.DesiredSize, scrollViewer, Orientation);
-						await JumpToOffsetAsync(scrollViewer, point.X, point.Y);
-					};
-				}
-				else if (scrollToPosition == ScrollToPosition.Center)
-				{
-					list.ScrollIntoView(targetItem, ScrollIntoViewAlignment.Leading);
-
-					adjust = async () =>
-					{
-						var point = new UWPPoint(scrollViewer.HorizontalOffset, scrollViewer.VerticalOffset);
-						var targetContainer = list.ContainerFromItem(targetItem) as UIElement;
-						point = AdjustToCenter(point, targetContainer.DesiredSize, scrollViewer, Orientation);
-						await JumpToOffsetAsync(scrollViewer, point.X, point.Y);
-					};
-				}
-
-				await tcs.Task;
-			}
-			finally
-			{
-				scrollViewer.ViewChanged -= ViewChanged;
-			}
-		}
-
-		async Task JumpToOffsetAsync(ScrollViewer scrollViewer, double targetHorizontalOffset, double targetVerticalOffset)
-		{
-			var tcs = new TaskCompletionSource<object>();
-
-			void ViewChanged(object s, ScrollViewerViewChangedEventArgs e)
-			{
-				tcs.TrySetResult(null);
-			}
-
-			try
-			{
-				scrollViewer.ViewChanged += ViewChanged;
-				scrollViewer.ChangeView(targetHorizontalOffset, targetVerticalOffset, null, true);
-				await tcs.Task;
-			}
-			finally
-			{
-				scrollViewer.ViewChanged -= ViewChanged;
-			}
-		}
-
-		async Task<bool> AnimateToOffsetAsync(ScrollViewer scrollViewer, double targetHorizontalOffset, double targetVerticalOffset, 
-			Func<Task<bool>> interruptCheck = null)
-		{
-			var tcs = new TaskCompletionSource<bool>();
-
-			async void ViewChanged(object s, ScrollViewerViewChangedEventArgs e)
-			{
-				if (tcs.Task.IsCompleted)
-				{
-					return;
-				}
-
-				if (e.IsIntermediate)
-				{
-					if (interruptCheck != null)
-					{
-
-						if (await interruptCheck())
-						{
-							scrollViewer.ChangeView(scrollViewer.HorizontalOffset, scrollViewer.VerticalOffset, 1.0f, true);
-							tcs.TrySetResult(true);
-						}
-					}
-				}
-				else
-				{
-					if (scrollViewer.HorizontalOffset != targetHorizontalOffset
-						|| scrollViewer.VerticalOffset != targetVerticalOffset)
-					{
-						tcs.TrySetResult(false);
-					}
-					else
-					{
-						tcs.TrySetResult(true);
-					}
-				}
-			}
-
-			try
-			{
-				scrollViewer.ViewChanged += ViewChanged;
-				scrollViewer.ChangeView(targetHorizontalOffset, targetVerticalOffset, null, false);
-				return await tcs.Task;
-			}
-			finally
-			{
-				scrollViewer.ViewChanged -= ViewChanged;
-			}
-		}
-
-		async Task ScrollToTargetContainer(UIElement targetContainer, ScrollViewer scrollViewer, ScrollToPosition scrollToPosition)
-		{
-			var transform = targetContainer.TransformToVisual(scrollViewer.Content as UIElement);
-			var position = transform?.TransformPoint(Zero);
-			
-			if (!position.HasValue)
-			{
-				return;
-			}
-
-			UWPPoint offset = position.Value;
-			var itemSize = targetContainer.DesiredSize;
-
-			// The transform will put the container at the top of the ScrollViewer; we'll need to adjust for
-			// other scroll positions
-
-			switch (scrollToPosition)
-			{
-				case ScrollToPosition.MakeVisible:
-					AdjustToMakeVisible(offset, itemSize, scrollViewer, Orientation);
-					break;
-				case ScrollToPosition.Center:
-					offset = AdjustToCenter(offset, itemSize, scrollViewer, Orientation);
-					break;
-				case ScrollToPosition.End:
-					offset = AdjustToEnd(offset, itemSize, scrollViewer, Orientation);
-					break;
-				case ScrollToPosition.Start:
-					// Already done
-					break;
-			}
-
-			await AnimateToOffsetAsync(scrollViewer, offset.X, offset.Y);
-		}
-
-		UWPPoint AdjustToMakeVisible(UWPPoint point, UWPSize itemSize, ScrollViewer scrollViewer, ItemsLayoutOrientation orientation)
-		{
-			// If we're scrolling down/right, we want the item to show up at the end of the viewport;
-			// otherwise, we want it at the top of the viewport
-
-			if (orientation == ItemsLayoutOrientation.Horizontal)
-			{
-				if (point.X > (scrollViewer.HorizontalOffset + scrollViewer.ViewportWidth))
-				{
-					return AdjustToEnd(point, itemSize, scrollViewer, orientation);
-				}
-
-				if (point.X >= scrollViewer.HorizontalOffset && point.X < (scrollViewer.HorizontalOffset + scrollViewer.ViewportWidth - itemSize.Width))
-				{
-					// The target is already in the viewport, no reason to scroll at all
-					return new UWPPoint(scrollViewer.HorizontalOffset, scrollViewer.VerticalOffset);
-				}
-
-				return point;
-			}
-
-			if (point.Y > (scrollViewer.VerticalOffset + scrollViewer.ViewportHeight))
-			{
-				return AdjustToEnd(point, itemSize, scrollViewer, orientation);
-			}
-
-			if (point.Y >= scrollViewer.VerticalOffset && point.Y < (scrollViewer.VerticalOffset + scrollViewer.ViewportHeight - itemSize.Height))
-			{
-				// The target is already in the viewport, no reason to scroll at all
-				return new UWPPoint(scrollViewer.HorizontalOffset, scrollViewer.VerticalOffset);
-			}
-
-			return point;
-		}
-
-		UWPPoint AdjustToEnd(UWPPoint point, UWPSize itemSize, ScrollViewer scrollViewer, ItemsLayoutOrientation orientation)
-		{
-			double adjustment;
-
-			if (orientation == ItemsLayoutOrientation.Horizontal)
-			{
-				adjustment = scrollViewer.ViewportWidth - itemSize.Width;
-				return new UWPPoint(point.X - adjustment, point.Y);
-			}
-
-			adjustment = scrollViewer.ViewportHeight - itemSize.Height;
-			return new UWPPoint(point.X, point.Y - adjustment);
-		}
-
-		UWPPoint AdjustToCenter(UWPPoint point, UWPSize itemSize, ScrollViewer scrollViewer, ItemsLayoutOrientation orientation)
-		{
-			double adjustment;
-
-			if (orientation == ItemsLayoutOrientation.Horizontal)
-			{
-				adjustment = (scrollViewer.ViewportWidth / 2) - (itemSize.Width / 2);
-				return new UWPPoint(point.X - adjustment, point.Y);
-			}
-
-			adjustment = (scrollViewer.ViewportHeight / 2) - (itemSize.Height / 2);
-			return new UWPPoint(point.X, point.Y - adjustment);
-		}
-
-		async Task<bool> ScrollToItem(ListViewBase list, object targetItem, ScrollViewer scrollViewer, ScrollToPosition scrollToPosition)
-		{
-			var targetContainer = list.ContainerFromItem(targetItem) as UIElement;
-
-			if (targetContainer != null)
-			{
-				await ScrollToTargetContainer(targetContainer, scrollViewer, scrollToPosition);
-				return true;
-			}
-
-			return false;
-		}
-
-		async Task<UWPPoint> GetApproximateTarget(ListViewBase list, object targetItem, ScrollToPosition scrollToPosition)
-		{
-			var scrollViewer = list.GetFirstDescendant<ScrollViewer>();
-
-			var horizontalOffset = scrollViewer.HorizontalOffset;
-			var verticalOffset = scrollViewer.VerticalOffset;
-
-			await JumpToItemAsync(list, targetItem, ScrollToPosition.Start);
-			var targetContainer = list.ContainerFromItem(targetItem) as UIElement;
-			var transform = targetContainer.TransformToVisual(scrollViewer.Content as UIElement);
-			await JumpToOffsetAsync(scrollViewer, horizontalOffset, verticalOffset);
-
-			return transform.TransformPoint(Zero);
-		}
-
-		async Task AnimateTo(ListViewBase list, object targetItem, ScrollToPosition scrollToPosition)
-        {
-			var scrollViewer = list.GetFirstDescendant<ScrollViewer>();
-
-			if (await ScrollToItem(list, targetItem, scrollViewer, scrollToPosition))
-			{
-				// Happy path; the item was already realized and we could just scroll to it
-				return;
-			}
-			
-			var targetPoint = await GetApproximateTarget(list, targetItem, scrollToPosition);
-			
-			await AnimateToOffsetAsync(scrollViewer, targetPoint.X, targetPoint.Y,
-				async () => await ScrollToItem(list, targetItem, scrollViewer, scrollToPosition));
+			return null;
 		}
 
 		void UpdateVerticalScrollBarVisibility()
